@@ -154,4 +154,4 @@ runs:
         report_artifact_json=$(cat $file_name)
         echo "output data for $file_name: $report_artifact_json"
 
-        echo "file_path=$(pwd)/$file_name" >> $GITHUB_OUTPUT
+        echo "file_path=$file_name" >> $GITHUB_OUTPUT
