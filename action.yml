@@ -17,6 +17,7 @@ inputs:
 outputs:
   file_path:
     description: 'Path to the output file'
+    value: ${{ steps.create-metadata-file.outputs.file_path }}
 
 runs:
   using: "composite"
@@ -108,6 +109,7 @@ runs:
         echo "awsDomain=$awsDomain" >> $GITHUB_ENV
 
     - name: Create metadata output json file
+      id: create-metadata-file
       shell: bash
       run: |
         echo "Beginning data combination and creation of output file"
