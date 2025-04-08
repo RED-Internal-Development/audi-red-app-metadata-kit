@@ -14,6 +14,11 @@ inputs:
     required: true
     type: string
 
+outputs:
+  file_path:
+    description: 'Path to the output file'
+    type: string
+
 runs:
   using: "composite"
   steps:
@@ -76,9 +81,10 @@ runs:
         npm_audit_output=$(jq -c . npm-audit.json)
         echo "NPM_AUDIT_DATA=$npm_audit_output" >> $GITHUB_ENV
 
-    - name: Extract dependencies from package.json of local repository
+    - name: Extract metadata from package.json of local repository
       shell: bash
       run: |
+        echo "Beginning package.json metadata collection"
         repo_name=$(jq -r '.name' package.json)
         repo_version=$(jq -r '.version' package.json)
         dependencies=$(jq '.dependencies' package.json | jq tostring)
@@ -102,35 +108,14 @@ runs:
         echo "repository=$repository" >> $GITHUB_ENV
         echo "awsDomain=$awsDomain" >> $GITHUB_ENV
 
-    - name: Update data/report.json file
+    - name: Create metadata output json file
       shell: bash
       run: |
-        echo "Updating "
-        data_folder="data"
-
-        if [[ -n "${{ inputs.workflow_run_id }}" ]]; then
-          report_artifact_json=$(cat collection-report/report.json)
-          repo_name=$(echo "$report_artifact_json" | jq -r 'to_entries | .[0].key')
-        else
-          mkdir -p "collection-report"
-          echo "{}" > collection-report/report.json
-          report_artifact_json=$(collection-report/report.json)
-          repo_name=$REPO_NAME
-          echo "repo_name: $repo_name"
-        fi
-
-        scanoss_results_file_path="scanoss-report/results.json"
-        scanoss_enabled=false
-        scanoss_target_directory="$data_folder/scanoss"
-        scanoss_target_file="$scanoss_target_directory/$repo_name.json"
-        mkdir -p "$scanoss_target_directory"
-
-        if [ -f "$scanoss_results_file_path" ]; then
-            scanoss_enabled=true
-            cp -f "$scanoss_results_file_path" "$scanoss_target_file"
-        else
-            echo "No scanoss results to include"
-        fi
+        echo "Beginning data combination and creation of output file"
+        file_name="metadata-report.json"
+        echo "{}" > $file_name
+        metadata_json=$(cat $file_name)
+        repo_name=$repo_name
 
         dependabot_prs_json=[]
         if [ -z "$DEPENDABOT_PRS" ]; then
@@ -151,14 +136,10 @@ runs:
         appstore_data_parsed=$(echo "$appstoreData" | jq fromjson)
         browserlist_data_parsed=$(echo "$browserlistData" | jq fromjson)
 
-        updated_report_artifact_json=$(echo "$report_artifact_json" | \
+        updated_metadata_json=$(echo "$metadata_json" | \
           jq --arg repo_name "$repo_name" \
           --arg repo_version "$repo_version" \
           --arg awsDomain "$awsDomain" \
-          --argjson scan_results "$scanoss_enabled" \
-          --arg docs_destination_team_folder "$docs_destination_team_folder" \
-          --arg docs_destination_app_folder "$docs_destination_app_folder" \
-          --arg docs_branch "$docs_branch" \
           --arg published_version "$LATEST_VERSION" \
           --argjson release_history "$RELEASE_HISTORY" \
           --argjson dependabot_prs "$dependabot_prs_json" \
@@ -168,20 +149,10 @@ runs:
           --argjson devDependencies "$dev_dependencies_parsed" \
           --argjson appstoreData "$appstore_data_parsed" \
           --argjson browserlistData "$browserlist_data_parsed" \
-          '.[$repo_name] |= . + {scan_results: $scan_results, docs: {repo_version: $repo_version, awsDomain: $awsDomain, docs_destination_team_folder: $docs_destination_team_folder, docs_destination_app_folder: $docs_destination_app_folder, docs_branch: $docs_branch, published_version: $published_version, release_history: $release_history, dependabot_prs: $dependabot_prs, npm_audit: $npm_audit, dependencies: $dependencies, devDependencies: $devDependencies, appstoreData: $appstoreData, browserlistData: $browserlistData}}')
-        echo "$updated_report_artifact_json" > collection-report/report.json
-        report_artifact_json=$(cat collection-report/report.json)
+          '.[$repo_name] |= . + {repo_version: $repo_version, awsDomain: $awsDomain, published_version: $published_version, release_history: $release_history, dependabot_prs: $dependabot_prs, npm_audit: $npm_audit, dependencies: $dependencies, devDependencies: $devDependencies, appstoreData: $appstoreData, browserlistData: $browserlistData}')
+        echo "$updated_metadata_json" > $file_name
 
-        # Push artifact report to existing report.json
-        mkdir -p "$data_folder"
+        report_artifact_json=$(cat $file_name)
+        echo "output data for $file_name: $report_artifact_json"
 
-        # Check if report.json exists inside the $data_folder folder; if not, create it
-        if [ ! -f "$data_folder"/report.json ]; then
-            echo "{}" > "$data_folder"/report.json
-        fi
-
-        jq --argjson new_report "$report_artifact_json" \
-          '. * $new_report' "$data_folder"/report.json > tmp_report.json
-        
-        mv tmp_report.json "$data_folder"/report.json
-        echo "data/report.json updated with metadata fields"
+        echo "file_path=$(pwd)/$file_name" >> $GITHUB_OUTPUT
