@@ -14,11 +14,6 @@ inputs:
     required: true
     type: string
 
-outputs:
-  file_path:
-    description: 'Path to the output file'
-    value: ${{ steps.create-metadata-file.outputs.file_path }}
-
 runs:
   using: "composite"
   steps:
@@ -152,8 +147,9 @@ runs:
           --argjson browserlistData "$browserlist_data_parsed" \
           '.[$repo_name] |= . + {repo_version: $repo_version, awsDomain: $awsDomain, published_version: $published_version, release_history: $release_history, dependabot_prs: $dependabot_prs, npm_audit: $npm_audit, dependencies: $dependencies, devDependencies: $devDependencies, appstoreData: $appstoreData, browserlistData: $browserlistData}')
         echo "$updated_metadata_json" > $file_name
-
-        report_artifact_json=$(cat $file_name)
-        echo "output data for $file_name: $report_artifact_json"
-
-        echo "file_path=$(pwd)/$file_name" >> $GITHUB_OUTPUT
+      
+    - name: Upload report.json
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: metadata-report
+        path: metadata-report.json
